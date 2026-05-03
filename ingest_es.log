@@ -1,0 +1,2 @@
+/Users/phamnhatlinh/time-series-query-optimization/scripts/generate_and_ingest_es.py:108: DeprecationWarning: Passing transport options in the API method is deprecated. Use 'Elasticsearch.options()' instead.
+  for success, info in helpers.streaming_bulk(
