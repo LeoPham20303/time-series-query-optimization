@@ -95,114 +95,140 @@ def run_timescale():
     latency = (time.time() - start_time) * 1000
     return latency
 
-# ==========================================
-# TRANG GIAO DIỆN CHUYÊN DỤNG
-# ==========================================
-st.title("⚡ TRANG THEO DÕI ĐỒ ÁN: ĐO LƯỜNG HIỆU NĂNG TIME-SERIES")
-st.markdown("Tiến hành so sánh độ trễ phản hồi của **Elasticsearch (Must vs Filter)** và **TimescaleDB** bằng dữ liệu Live.")
 
-with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/f/f4/Elasticsearch_logo.svg", width=150)
-    st.image("https://upload.wikimedia.org/wikipedia/commons/6/6b/Timescaledb_Logo.svg", width=150)
-    st.header("⚙️ Cấu Hình Thông Số")
-    iterations = st.slider("Số Lần Truy Vấn Lặp (Để tính P95)", min_value=5, max_value=50, value=20, step=5)
-    
-if st.button("🚀 BẮT ĐẦU CHẠY BENCHMARK", type="primary", use_container_width=True):
-    
-    st.markdown("### 🕒 Tiến Trình Đang Quét Dữ Liệu...")
-    progress_bar = st.progress(0)
-    
-    results = {
-        "ES: Chưa Tối Ưu (Must)": [],
-        "ES: Đã Tối Ưu (Filter+Cache)": [],
-        "TimescaleDB (Hypertable)": []
-    }
-    
-    sample_data = []
-    
-    for i in range(iterations):
-        # 1. ES Baseline
-        es_took_base, hits = run_es_baseline()
-        results["ES: Chưa Tối Ưu (Must)"].append(es_took_base)
+st.title("⚡ TRANG THEO DÕI ĐỒ ÁN: TỐI ƯU HÓA TIME-SERIES")
+
+tab1, tab2 = st.tabs(["🚀 CHẠY BENCHMARK ĐO LƯỜNG", "🔍 DUYỆT DỮ LIỆU THỰC TẾ (DATA EXPLORER)"])
+
+with tab1:
+    st.markdown("Tiến hành so sánh độ trễ phản hồi của **Elasticsearch (Must vs Filter)** và **TimescaleDB** bằng dữ liệu Live.")
+
+    with st.sidebar:
+        st.image("https://upload.wikimedia.org/wikipedia/commons/f/f4/Elasticsearch_logo.svg", width=150)
+        st.image("https://upload.wikimedia.org/wikipedia/commons/6/6b/Timescaledb_Logo.svg", width=150)
+        st.header("⚙️ Cấu Hình Thông Số")
+        iterations = st.slider("Số Lần Truy Vấn Lặp (Để tính P95)", min_value=5, max_value=50, value=20, step=5)
         
-        if i == 0 and hits:
-            # Lấy data đại diện hiển thị cho visual
-            sample_data = [hit['_source'] for hit in hits[:5]]
+    if st.button("🚀 BẮT ĐẦU CHẠY BENCHMARK", type="primary", use_container_width=True):
+        st.markdown("### 🕒 Tiến Trình Đang Quét Dữ Liệu...")
+        progress_bar = st.progress(0)
+        
+        results = {
+            "ES: Chưa Tối Ưu (Must)": [],
+            "ES: Đã Tối Ưu (Filter+Cache)": [],
+            "TimescaleDB (Hypertable)": []
+        }
+        
+        for i in range(iterations):
+            es_took_base, hits = run_es_baseline()
+            results["ES: Chưa Tối Ưu (Must)"].append(es_took_base)
             
-        # 2. ES Optimized
-        es_took_opt = run_es_optimized()
-        results["ES: Đã Tối Ưu (Filter+Cache)"].append(es_took_opt)
+            es_took_opt = run_es_optimized()
+            results["ES: Đã Tối Ưu (Filter+Cache)"].append(es_took_opt)
+            
+            ts_latency = run_timescale()
+            ts_server_took = max(1, ts_latency - 250) 
+            results["TimescaleDB (Hypertable)"].append(ts_server_took)
+            
+            progress_bar.progress((i + 1) / iterations)
         
-        # 3. TSDB
-        ts_latency = run_timescale()
-        ts_server_took = max(1, ts_latency - 250) 
-        results["TimescaleDB (Hypertable)"].append(ts_server_took)
-        
-        progress_bar.progress((i + 1) / iterations)
-    
-    # Ẩn progress bar
-    progress_bar.empty()
-    st.success(f"✅ Hoàn Thành Benchmark {iterations} vòng truy vấn mạng!")
+        progress_bar.empty()
+        st.success(f"✅ Hoàn Thành Benchmark {iterations} vòng truy vấn mạng!")
 
-    # ====== TÍNH TOÁN P95 ======
-    p95_base = pd.Series(results["ES: Chưa Tối Ưu (Must)"]).quantile(0.95)
-    p95_opt = pd.Series(results["ES: Đã Tối Ưu (Filter+Cache)"]).quantile(0.95)
-    p95_ts = pd.Series(results["TimescaleDB (Hypertable)"]).quantile(0.95)
-    
-    st.markdown("---")
-    st.header("🏆 THỐNG KÊ KẾT QUẢ ĐỘ TRỄ SERVER (PERCENTILE 95)")
-    
-    # Hiển thị Metric Trực quan
-    m1, m2, m3 = st.columns(3)
-    
-    # Tính phần trăm cải thiện (Deltas)
-    delta_opt_val = ((p95_base - p95_opt) / p95_base * 100) if p95_base > 0 else 0
-    delta_ts_val = ((p95_base - p95_ts) / p95_base * 100) if p95_base > 0 else 0
-    
-    with m1:
-        st.metric("🔴 ES: Chưa Tối Ưu (Must)", f"{p95_base:.1f} ms", "Base (Thước đo hệ quy chiếu)", delta_color="off")
-    with m2:
-        st.metric("🟢 ES: Đã Tối Ưu (Filter+Cache)", f"{p95_opt:.1f} ms", f"{delta_opt_val:.1f}% Tốc độ nhanh hơn")
-    with m3:
-        st.metric("🔵 TimescaleDB (Hypertable)", f"{p95_ts:.1f} ms", f"{delta_ts_val:.1f}% Tốc độ nhanh hơn so với Base")
+        p95_base = pd.Series(results["ES: Chưa Tối Ưu (Must)"]).quantile(0.95)
+        p95_opt = pd.Series(results["ES: Đã Tối Ưu (Filter+Cache)"]).quantile(0.95)
+        p95_ts = pd.Series(results["TimescaleDB (Hypertable)"]).quantile(0.95)
         
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # ====== ĐỒ THỊ TRỰC QUAN ======
-    col_chart, col_data = st.columns([1.5, 1])
-    
-    with col_chart:
+        st.markdown("---")
+        st.header("🏆 THỐNG KÊ KẾT QUẢ ĐỘ TRỄ SERVER (PERCENTILE 95)")
+        
+        m1, m2, m3 = st.columns(3)
+        delta_opt_val = ((p95_base - p95_opt) / p95_base * 100) if p95_base > 0 else 0
+        delta_ts_val = ((p95_base - p95_ts) / p95_base * 100) if p95_base > 0 else 0
+        
+        with m1:
+            st.metric("🔴 ES: Chưa Tối Ưu (Must)", f"{p95_base:.1f} ms", "Base (Thước đo hệ quy chiếu)", delta_color="off")
+        with m2:
+            st.metric("🟢 ES: Đã Tối Ưu (Filter+Cache)", f"{p95_opt:.1f} ms", f"{delta_opt_val:.1f}% Nhanh hơn")
+        with m3:
+            st.metric("🔵 TimescaleDB (Hypertable)", f"{p95_ts:.1f} ms", f"{delta_ts_val:.1f}% Nhanh hơn")
+            
         df = pd.DataFrame({
             "Hệ Thống DB": ["ES: Chưa Tối Ưu", "ES: Đã Tối Ưu", "TimescaleDB"],
             "P95 Latency (ms)": [p95_base, p95_opt, p95_ts]
         })
-        
         fig = px.bar(
-            df, 
-            x="Hệ Thống DB", 
-            y="P95 Latency (ms)", 
-            color="Hệ Thống DB",
-            text_auto=".1f",
-            title=f"Biểu đồ cột so sánh P95 (Chỉ số càng thấp càng tốt)",
+            df, x="Hệ Thống DB", y="P95 Latency (ms)", color="Hệ Thống DB",
+            text_auto=".1f", title=f"Biểu đồ cột so sánh P95 (Chỉ số càng thấp càng tốt)",
             color_discrete_sequence=["#EF4444", "#10B981", "#3B82F6"]
         )
         fig.update_layout(height=450, showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
+
+with tab2:
+    st.markdown("### 🗄️ Bảng Khám Phá Dữ Liệu Trực Tiếp")
+    
+    # ==== ĐẾM CHÍNH XÁC TỔNG DUNG LƯỢNG ====
+    st.markdown("<br><b>📊 THỐNG KÊ TỔNG DUNG LƯỢNG (LIVE DATABASE VOLUMES)</b>", unsafe_allow_html=True)
+    m_vol1, m_vol2 = st.columns(2)
+    
+    ts_total = 0
+    try:
+        conn = psycopg2.connect(config.PG_URI)
+        cur = conn.cursor()
+        cur.execute("SELECT count(*) FROM gps_events;")
+        ts_total = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+    except Exception as e:
+        pass
         
-    with col_data:
-        st.markdown(f"**📝 Dữ liệu trích xuất mẫu (Preview 5 dòng)**")
-        if sample_data:
-            df_preview = pd.DataFrame(sample_data)
-            # Chọn lọc các cột hiển thị đẹp
-            if 'companyId' in df_preview.columns:
-                df_preview = df_preview[['@timestamp', 'companyId', 'assetId', 'eventName', 'severity']]
-            st.dataframe(df_preview, height=400, use_container_width=True)
-        else:
-            st.warning("Database hiện đã cạn dữ liệu hoặc đang trống.")
+    es_total = 0
+    try:
+        es_count_api = Elasticsearch(config.ES_URL, basic_auth=(config.ES_USER, config.ES_PASSWORD))
+        es_total = es_count_api.count(index="gps-events")['count']
+    except Exception as e:
+        pass
+        
+    m_vol1.metric("📦 Sức Chứa Thực Tế: TimescaleDB", f"{ts_total:,} bản ghi")
+    m_vol2.metric("📦 Sức Chứa Thực Tế: Elastic Cloud", f"{es_total:,} bản ghi")
+    
+    st.markdown("---")
+    st.info("Khu vực này kết xuất trực tiếp dữ liệu thô (Raw Data). Vì để tải cả 15 triệu dòng cùng lúc sẽ làm sập RAM máy tính của bạn ngay lập tức, nên hộp thoại dưới đây được giới hạn an toàn để chỉ hiển thị tối đa 500 dòng mới nhất cho bạn duyệt thử.")
+    
+    col_ts, col_es = st.columns(2)
+    
+    with col_ts:
+        st.subheader("🔵 Dữ liệu từ Postgres (TimescaleDB)")
+        limit_ts = st.slider("Số dòng hiển thị (Timescale)", 10, 500, 50)
+        try:
+            conn = psycopg2.connect(config.PG_URI)
+            cur = conn.cursor()
+            cur.execute(f"SELECT time, company_id, asset_id, event_name, severity FROM gps_events ORDER BY time DESC LIMIT {limit_ts};")
+            rows = cur.fetchall()
+            if rows:
+                df_ts = pd.DataFrame(rows, columns=['Thời Gian', 'Mã C.Ty', 'Mã Xe', 'Tên Sự Kiện', 'Mức Độ'])
+                st.dataframe(df_ts, use_container_width=True, height=600)
+            else:
+                st.warning("TimescaleDB chưa có dữ liệu.")
+            cur.close()
+            conn.close()
+        except Exception as e:
+            st.error(f"Lỗi truy xuất TimescaleDB: {e}")
             
-    # Kết Luận Thực Nghiệm
-    st.error(f"""
-    **🔍 KẾT LUẬN GIẢ THUYẾT (HYPOTHESIS VERIFICATION):**
-    - **Elasticsearch Optimization:** Việc áp dụng Filter/Cache giúp giảm ngay **{delta_opt_val:.1f}%** độ trễ truy vấn so với thiết lập mặc định (Must). Chứng minh rõ H1 là ĐÚNG.
-    - **TimescaleDB Architecture:** Sự kết hợp giữa `B-Tree` và `Hypertable Chunking` giúp PostgreSQL có khả năng đọc/quét Range queries tốt gần ngang ngửa với Cached Elasticsearch. Đạt chỉ tiêu cho H3.
-    """)
+    with col_es:
+        st.subheader("🟢 Dữ liệu từ Elastic Cloud (JSON)")
+        limit_es = st.slider("Số dòng hiển thị (ElasticSearch)", 10, 500, 50)
+        try:
+            es = Elasticsearch(config.ES_URL, basic_auth=(config.ES_USER, config.ES_PASSWORD))
+            res = es.search(index="gps-events", body={"query": {"match_all": {}}, "sort": [{"@timestamp": {"order": "desc"}}], "size": limit_es})
+            hits = [r['_source'] for r in res['hits']['hits']]
+            if hits:
+                df_es = pd.DataFrame(hits)
+                df_es = df_es[['@timestamp', 'companyId', 'assetId', 'eventName', 'severity']]
+                df_es.columns = ['Thời Gian', 'Mã C.Ty', 'Mã Xe', 'Tên Sự Kiện', 'Mức Độ']
+                st.dataframe(df_es, use_container_width=True, height=600)
+            else:
+                st.warning("Elasticsearch chưa có dữ liệu.")
+        except Exception as e:
+            st.error(f"Lỗi truy xuất Elasticsearch: {e}")

@@ -25,7 +25,7 @@ es = Elasticsearch(
 )
 
 # THÔNG SỐ ĐỒ ÁN
-TOTAL_DOCS = 10_000_000
+TOTAL_DOCS = 426_600
 BATCH_SIZE = 10_000
 INDEX_NAME = "gps-events"
 
