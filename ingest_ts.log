@@ -1,9 +1,0 @@
-─────── 🚀 BẮT ĐẦU INGESTION VÀO TIMESCALEDB ───────
-Khởi tạo Bảng và Hypertable trên TimescaleDB...
-Setup TimescaleDB thành công!
-Lỗi kĩ thuật: cannot execute INSERT in a read-only 
-transaction
-
-Đang đẩy dữ liệu lên Timesc… 400000/200… Tốc độ: 747
-── ✅ HOÀN THÀNH QUÁ TRÌNH INGESTION TIMESCALEDB ───
-Bơm 400,000 bản ghi trong vòng 496.87 giây!
